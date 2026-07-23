@@ -1,3 +1,30 @@
+import { CalendarDays, TrendingUp, Workflow } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import Faq from "@/components/Faq";
+import WaitlistForm from "@/components/WaitlistForm";
+
+const whySoloPilot: {
+  title: string;
+  description: string;
+  icon: LucideIcon;
+}[] = [
+  {
+    title: "AI Content Planner",
+    description: "Plan a month of content in minutes.",
+    icon: CalendarDays,
+  },
+  {
+    title: "AI Workflow Manager",
+    description: "Keep track of ideas, tasks, and publishing schedules.",
+    icon: Workflow,
+  },
+  {
+    title: "AI Growth Assistant",
+    description: "Get AI-powered suggestions to grow faster.",
+    icon: TrendingUp,
+  },
+];
+
 const features = [
   {
     title: "Plan content",
@@ -70,6 +97,7 @@ const features = [
 ];
 
 export default function Home() {
+
   return (
     <div className="relative flex min-h-full flex-1 flex-col overflow-hidden">
       {/* Background */}
@@ -110,41 +138,73 @@ export default function Home() {
 
       <main className="flex flex-1 flex-col">
         {/* Hero */}
-        <section className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center px-6 pb-20 pt-12 text-center sm:px-8 sm:pb-28 sm:pt-16">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-zinc-400 backdrop-blur-sm">
+        <section className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center px-5 pb-20 pt-12 text-center sm:px-8 sm:pb-28 sm:pt-16">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs text-zinc-400 backdrop-blur-sm sm:px-4 sm:text-sm">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-indigo-500" />
             </span>
-            Built in public by AIBuilder
+            AI Chief of Staff for Content Creators
           </div>
 
-          <h1 className="max-w-4xl text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl md:leading-[1.1]">
-            Your AI Chief of Staff
+          <h1 className="max-w-4xl text-[2rem] font-bold leading-[1.15] tracking-tight text-white sm:text-5xl md:text-6xl md:leading-[1.1]">
+            Stop running your content business
             <span className="block bg-gradient-to-r from-indigo-400 via-violet-400 to-cyan-400 bg-clip-text text-transparent">
-              for Content Creators
+              like a one-person army
             </span>
           </h1>
 
-          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-zinc-400 sm:text-xl">
-            Plan smarter, create faster, and grow with confidence. SoloPilot
-            helps solo creators operate like a full content team — powered by
-            AI.
+          <p className="mt-5 max-w-2xl text-base leading-relaxed text-zinc-400 sm:mt-6 sm:text-lg md:text-xl">
+            SoloPilot is your AI Chief of Staff — it plans your calendar,
+            drafts scripts in your voice, and tracks what&apos;s working so you
+            can focus on creating, not coordinating.
           </p>
 
-          <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row">
+          <div className="mt-8 flex w-full max-w-md flex-col gap-3 sm:mt-10 sm:max-w-none sm:w-auto sm:flex-row sm:items-center sm:justify-center sm:gap-4">
             <a
               href="#waitlist"
-              className="inline-flex h-12 min-w-[180px] items-center justify-center rounded-full bg-indigo-500 px-8 text-sm font-semibold text-white shadow-[0_0_40px_-8px_rgba(99,102,241,0.6)] transition-all hover:bg-indigo-400 hover:shadow-[0_0_50px_-8px_rgba(99,102,241,0.8)]"
+              className="inline-flex h-12 w-full items-center justify-center rounded-full bg-indigo-500 px-8 text-sm font-semibold text-white shadow-[0_0_40px_-8px_rgba(99,102,241,0.6)] transition-all hover:bg-indigo-400 hover:shadow-[0_0_50px_-8px_rgba(99,102,241,0.8)] sm:min-w-[180px] sm:w-auto"
             >
-              Join Waitlist
+              Join the Waitlist
             </a>
             <a
               href="#features"
-              className="inline-flex h-12 min-w-[180px] items-center justify-center rounded-full border border-white/10 bg-white/5 px-8 text-sm font-medium text-zinc-300 backdrop-blur-sm transition-colors hover:border-white/20 hover:bg-white/10"
+              className="inline-flex h-12 w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-8 text-sm font-medium text-zinc-300 backdrop-blur-sm transition-colors hover:border-white/20 hover:bg-white/10 sm:min-w-[180px] sm:w-auto"
             >
-              See how it works
+              See How It Works
             </a>
+          </div>
+        </section>
+
+        {/* Why SoloPilot */}
+        <section
+          id="why-solopilot"
+          className="mx-auto w-full max-w-6xl px-5 pb-16 sm:px-8 sm:pb-24"
+        >
+          <div className="mb-10 text-center sm:mb-12">
+            <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+              Why SoloPilot?
+            </h2>
+            <p className="mt-3 text-sm text-zinc-400 sm:text-base">
+              Three AI roles that replace the team you don&apos;t have yet.
+            </p>
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
+            {whySoloPilot.map(({ title, description, icon: Icon }) => (
+              <article
+                key={title}
+                className="group relative rounded-2xl border border-white/8 bg-white/[0.03] p-6 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:border-indigo-500/30 hover:bg-white/[0.05] hover:shadow-[0_8px_30px_-12px_rgba(99,102,241,0.4)] sm:p-8"
+              >
+                <div className="mb-5 inline-flex rounded-xl bg-indigo-500/10 p-3 text-indigo-400 ring-1 ring-indigo-400/20 transition-all duration-300 group-hover:scale-110 group-hover:bg-indigo-500/15 group-hover:text-indigo-300 group-hover:ring-indigo-400/40">
+                  <Icon className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+                </div>
+                <h3 className="text-lg font-semibold text-white">{title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+                  {description}
+                </p>
+              </article>
+            ))}
           </div>
         </section>
 
@@ -182,6 +242,8 @@ export default function Home() {
           </div>
         </section>
 
+        <Faq />
+
         {/* Waitlist CTA */}
         <section
           id="waitlist"
@@ -199,12 +261,7 @@ export default function Home() {
               Join the waitlist for early access to SoloPilot. We&apos;re
               building in public and shipping fast.
             </p>
-            <a
-              href="#"
-              className="relative mt-8 inline-flex h-12 items-center justify-center rounded-full bg-white px-8 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-100"
-            >
-              Join Waitlist
-            </a>
+            <WaitlistForm />
           </div>
         </section>
       </main>
