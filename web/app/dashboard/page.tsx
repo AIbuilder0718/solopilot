@@ -6,27 +6,64 @@ import { supabase } from "@/lib/supabase";
 type SavedScript = {
   id: string;
   topic: string;
-  audience: string;
-  video_length: string;
-  content: string;
+  audience: string | null;
+  video_length: string | null;
+  content: string | null;
   created_at: string;
 };
 
-function isSavedScript(value: unknown): value is SavedScript {
-  if (typeof value !== "object" || value === null) {
-    return false;
+function toErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
   }
 
-  const record = value as Record<string, unknown>;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
 
-  return (
-    typeof record.id === "string" &&
-    typeof record.topic === "string" &&
-    typeof record.audience === "string" &&
-    typeof record.video_length === "string" &&
-    typeof record.content === "string" &&
-    typeof record.created_at === "string"
-  );
+  return fallback;
+}
+
+function normalizeSavedScripts(data: unknown): SavedScript[] {
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  const scripts: SavedScript[] = [];
+
+  for (const row of data) {
+    if (typeof row !== "object" || row === null) {
+      continue;
+    }
+
+    const record = row as Record<string, unknown>;
+    const id = record.id;
+    const topic = record.topic;
+    const createdAt = record.created_at;
+
+    if (
+      (typeof id !== "string" && typeof id !== "number") ||
+      typeof topic !== "string" ||
+      typeof createdAt !== "string"
+    ) {
+      continue;
+    }
+
+    scripts.push({
+      id: String(id),
+      topic,
+      audience: typeof record.audience === "string" ? record.audience : null,
+      video_length:
+        typeof record.video_length === "string" ? record.video_length : null,
+      content: typeof record.content === "string" ? record.content : null,
+      created_at: createdAt,
+    });
+  }
+
+  return scripts;
 }
 
 export default function DashboardPage() {
@@ -44,63 +81,133 @@ export default function DashboardPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  async function loadScripts() {
-    setIsLoadingScripts(true);
-    setScriptsError("");
+  async function fetchSavedScripts(
+    userId: string,
+    options?: { ignoreIfCancelled?: () => boolean }
+  ) {
+    const shouldIgnore = () => options?.ignoreIfCancelled?.() ?? false;
+
+    if (!shouldIgnore()) {
+      setIsLoadingScripts(true);
+      setScriptsError("");
+    }
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        throw new Error("사용자 정보를 찾을 수 없습니다.");
-      }
-
       const { data, error } = await supabase
         .from("scripts")
         .select("id, topic, audience, video_length, content, created_at")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Fetch saved scripts error:", error);
+        throw new Error(
+          error.message || "Failed to load saved scripts from Supabase."
+        );
+      }
 
-      const rows = Array.isArray(data) ? data.filter(isSavedScript) : [];
-      setScripts(rows);
+      if (shouldIgnore()) {
+        return;
+      }
+
+      setScripts(normalizeSavedScripts(data));
     } catch (error) {
-      console.error("Load scripts error:", error);
+      console.error("Fetch saved scripts error:", error);
+
+      if (shouldIgnore()) {
+        return;
+      }
+
       setScriptsError(
-        error instanceof Error
-          ? error.message
-          : "대본 목록을 불러오지 못했습니다."
+        toErrorMessage(error, "Failed to load saved scripts.")
       );
+      setScripts([]);
     } finally {
-      setIsLoadingScripts(false);
+      if (!shouldIgnore()) {
+        setIsLoadingScripts(false);
+      }
     }
   }
 
   useEffect(() => {
-    async function ensureAnonymousUser() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    let cancelled = false;
 
-      if (!session) {
-        const { error } = await supabase.auth.signInAnonymously();
-
-        if (error) {
-          console.error("Anonymous sign-in error:", error);
-          setError("사용자 세션을 만들지 못했습니다.");
-          setScriptsError("사용자 세션을 만들지 못했습니다.");
-          setIsLoadingScripts(false);
-          return;
-        }
+    async function initializeAuthAndFetchScripts() {
+      if (!cancelled) {
+        setIsLoadingScripts(true);
+        setScriptsError("");
       }
 
-      await loadScripts();
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error("Get session error:", sessionError);
+          throw sessionError;
+        }
+
+        let activeSession = session;
+
+        if (!activeSession) {
+          const { data, error: signInError } =
+            await supabase.auth.signInAnonymously();
+
+          if (signInError) {
+            console.error("Anonymous sign-in error:", signInError);
+            throw signInError;
+          }
+
+          activeSession = data.session;
+
+          if (!activeSession) {
+            const {
+              data: { session: refreshedSession },
+              error: refreshError,
+            } = await supabase.auth.getSession();
+
+            if (refreshError) {
+              console.error("Refresh session error:", refreshError);
+              throw refreshError;
+            }
+
+            activeSession = refreshedSession;
+          }
+        }
+
+        if (!activeSession?.user) {
+          throw new Error("Unable to establish a user session.");
+        }
+
+        // Only fetch after a final user session is available.
+        // Existing sessions and newly created anonymous sessions both reach here.
+        await fetchSavedScripts(activeSession.user.id, {
+          ignoreIfCancelled: () => cancelled,
+        });
+      } catch (error) {
+        console.error("Dashboard auth/init error:", error);
+
+        if (cancelled) {
+          return;
+        }
+
+        const message = toErrorMessage(
+          error,
+          "Failed to initialize user session."
+        );
+        setError(message);
+        setScriptsError(message);
+        setIsLoadingScripts(false);
+      }
     }
 
-    ensureAnonymousUser();
+    initializeAuthAndFetchScripts();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function generateScript() {
@@ -179,17 +286,16 @@ export default function DashboardPage() {
         content: script,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Save script error:", error);
+        throw error;
+      }
 
       alert("대본이 저장되었습니다.");
-      await loadScripts();
+      await fetchSavedScripts(user.id);
     } catch (error) {
       console.error("Save script error:", error);
-      setError(
-        error instanceof Error
-          ? error.message
-          : "대본 저장에 실패했습니다."
-      );
+      setError(toErrorMessage(error, "대본 저장에 실패했습니다."));
     } finally {
       setIsSaving(false);
     }
@@ -205,7 +311,10 @@ export default function DashboardPage() {
     try {
       const { error } = await supabase.from("scripts").delete().eq("id", id);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Delete script error:", error);
+        throw error;
+      }
 
       setScripts((prev) => prev.filter((item) => item.id !== id));
 
@@ -214,11 +323,7 @@ export default function DashboardPage() {
       }
     } catch (error) {
       console.error("Delete script error:", error);
-      setScriptsError(
-        error instanceof Error
-          ? error.message
-          : "대본 삭제에 실패했습니다."
-      );
+      setScriptsError(toErrorMessage(error, "대본 삭제에 실패했습니다."));
     } finally {
       setDeletingId(null);
     }
@@ -388,19 +493,17 @@ export default function DashboardPage() {
         </div>
 
         <section className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold">Saved scripts</h2>
-              <p className="mt-1 text-sm text-zinc-400">
-                현재 계정에 저장된 대본을 확인하고 관리하세요.
-              </p>
-            </div>
+          <div>
+            <h2 className="text-xl font-semibold">Saved scripts</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              Scripts saved to your current account.
+            </p>
           </div>
 
           <div className="mt-6">
             {isLoadingScripts && (
               <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 px-4 py-10 text-center text-sm text-zinc-400">
-                대본 목록을 불러오는 중...
+                Loading saved scripts...
               </div>
             )}
 
@@ -413,10 +516,7 @@ export default function DashboardPage() {
             {!isLoadingScripts && !scriptsError && scripts.length === 0 && (
               <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 px-4 py-10 text-center">
                 <p className="text-sm font-medium text-zinc-300">
-                  저장된 대본이 없습니다
-                </p>
-                <p className="mt-2 text-sm text-zinc-500">
-                  대본을 생성한 뒤 Save script로 저장하면 여기에 표시됩니다.
+                  No saved scripts yet.
                 </p>
               </div>
             )}
@@ -425,6 +525,11 @@ export default function DashboardPage() {
               <ul className="space-y-3">
                 {scripts.map((item) => {
                   const isExpanded = expandedId === item.id;
+                  const metaParts = [
+                    item.audience,
+                    item.video_length,
+                    formatCreatedAt(item.created_at),
+                  ].filter((value): value is string => Boolean(value));
 
                   return (
                     <li
@@ -443,8 +548,7 @@ export default function DashboardPage() {
                             {item.topic || "Untitled script"}
                           </p>
                           <p className="mt-1 text-xs text-zinc-500">
-                            {item.audience} · {item.video_length} ·{" "}
-                            {formatCreatedAt(item.created_at)}
+                            {metaParts.join(" · ")}
                           </p>
                         </button>
 
@@ -473,7 +577,7 @@ export default function DashboardPage() {
                       {isExpanded && (
                         <div className="border-t border-zinc-800 px-4 py-4">
                           <div className="whitespace-pre-wrap text-sm leading-7 text-zinc-200">
-                            {item.content}
+                            {item.content || "No script content."}
                           </div>
                         </div>
                       )}
