@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+type ContentMode = "standard" | "faceless";
+
 type SavedScript = {
   id: string;
   topic: string;
@@ -10,6 +12,11 @@ type SavedScript = {
   video_length: string | null;
   content: string | null;
   created_at: string;
+};
+
+const CONTENT_MODE_LABELS: Record<ContentMode, string> = {
+  standard: "Standard",
+  faceless: "Faceless",
 };
 
 function toErrorMessage(error: unknown, fallback: string): string {
@@ -70,6 +77,7 @@ export default function DashboardPage() {
   const [topic, setTopic] = useState("");
   const [audience, setAudience] = useState("Beginner");
   const [length, setLength] = useState("3 minutes");
+  const [contentMode, setContentMode] = useState<ContentMode>("standard");
   const [script, setScript] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -227,6 +235,7 @@ export default function DashboardPage() {
           topic,
           audience,
           length,
+          contentMode,
         }),
       });
 
@@ -381,6 +390,38 @@ export default function DashboardPage() {
 
             <div className="mt-5">
               <label className="mb-2 block text-sm text-zinc-300">
+                Content format
+              </label>
+
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-zinc-700 bg-zinc-950 p-1">
+                <button
+                  type="button"
+                  onClick={() => setContentMode("standard")}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    contentMode === "standard"
+                      ? "bg-violet-500 text-white"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  Standard script
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setContentMode("faceless")}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    contentMode === "faceless"
+                      ? "bg-violet-500 text-white"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  Faceless content
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <label className="mb-2 block text-sm text-zinc-300">
                 Target audience
               </label>
 
@@ -450,7 +491,7 @@ export default function DashboardPage() {
                 )}
 
                 <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">
-                  {audience} · {length}
+                  {audience} · {length} · {CONTENT_MODE_LABELS[contentMode]}
                 </span>
               </div>
             </div>
