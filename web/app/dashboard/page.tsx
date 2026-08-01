@@ -3,6 +3,32 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+type SavedScript = {
+  id: string;
+  topic: string;
+  audience: string;
+  video_length: string;
+  content: string;
+  created_at: string;
+};
+
+function isSavedScript(value: unknown): value is SavedScript {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return (
+    typeof record.id === "string" &&
+    typeof record.topic === "string" &&
+    typeof record.audience === "string" &&
+    typeof record.video_length === "string" &&
+    typeof record.content === "string" &&
+    typeof record.created_at === "string"
+  );
+}
+
 export default function DashboardPage() {
   const [topic, setTopic] = useState("");
   const [audience, setAudience] = useState("Beginner");
@@ -12,25 +38,70 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [scripts, setScripts] = useState<SavedScript[]>([]);
+  const [isLoadingScripts, setIsLoadingScripts] = useState(true);
+  const [scriptsError, setScriptsError] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-useEffect(() => {
-  async function ensureAnonymousUser() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+  async function loadScripts() {
+    setIsLoadingScripts(true);
+    setScriptsError("");
 
-    if (session) return;
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    const { error } = await supabase.auth.signInAnonymously();
+      if (!user) {
+        throw new Error("사용자 정보를 찾을 수 없습니다.");
+      }
 
-    if (error) {
-      console.error("Anonymous sign-in error:", error);
-      setError("사용자 세션을 만들지 못했습니다.");
+      const { data, error } = await supabase
+        .from("scripts")
+        .select("id, topic, audience, video_length, content, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const rows = Array.isArray(data) ? data.filter(isSavedScript) : [];
+      setScripts(rows);
+    } catch (error) {
+      console.error("Load scripts error:", error);
+      setScriptsError(
+        error instanceof Error
+          ? error.message
+          : "대본 목록을 불러오지 못했습니다."
+      );
+    } finally {
+      setIsLoadingScripts(false);
     }
   }
 
-  ensureAnonymousUser();
-}, []);
+  useEffect(() => {
+    async function ensureAnonymousUser() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        const { error } = await supabase.auth.signInAnonymously();
+
+        if (error) {
+          console.error("Anonymous sign-in error:", error);
+          setError("사용자 세션을 만들지 못했습니다.");
+          setScriptsError("사용자 세션을 만들지 못했습니다.");
+          setIsLoadingScripts(false);
+          return;
+        }
+      }
+
+      await loadScripts();
+    }
+
+    ensureAnonymousUser();
+  }, []);
 
   async function generateScript() {
     if (!topic.trim()) return;
@@ -69,57 +140,105 @@ useEffect(() => {
       setIsLoading(false);
     }
   }
-async function copyScript() {
-  if (!script) return;
 
-  try {
-    await navigator.clipboard.writeText(script);
-    setCopied(true);
+  async function copyScript() {
+    if (!script) return;
 
-    setTimeout(() => {
-      setCopied(false);
-    }, 2000);
-  } catch {
-    setError("스크립트를 복사하지 못했습니다.");
+    try {
+      await navigator.clipboard.writeText(script);
+      setCopied(true);
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch {
+      setError("스크립트를 복사하지 못했습니다.");
+    }
   }
-}
-async function saveScript() {
-  if (!script) return;
 
-  setIsSaving(true);
-  setError("");
+  async function saveScript() {
+    if (!script) return;
 
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    setIsSaving(true);
+    setError("");
 
-    if (!user) {
-      throw new Error("사용자 정보를 찾을 수 없습니다.");
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error("사용자 정보를 찾을 수 없습니다.");
+      }
+
+      const { error } = await supabase.from("scripts").insert({
+        user_id: user.id,
+        topic,
+        audience,
+        video_length: length,
+        content: script,
+      });
+
+      if (error) throw error;
+
+      alert("대본이 저장되었습니다.");
+      await loadScripts();
+    } catch (error) {
+      console.error("Save script error:", error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "대본 저장에 실패했습니다."
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function deleteScript(id: string) {
+    const confirmed = window.confirm("이 대본을 삭제하시겠습니까?");
+    if (!confirmed) return;
+
+    setDeletingId(id);
+    setScriptsError("");
+
+    try {
+      const { error } = await supabase.from("scripts").delete().eq("id", id);
+
+      if (error) throw error;
+
+      setScripts((prev) => prev.filter((item) => item.id !== id));
+
+      if (expandedId === id) {
+        setExpandedId(null);
+      }
+    } catch (error) {
+      console.error("Delete script error:", error);
+      setScriptsError(
+        error instanceof Error
+          ? error.message
+          : "대본 삭제에 실패했습니다."
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  function formatCreatedAt(value: string) {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return value;
     }
 
-    const { error } = await supabase.from("scripts").insert({
-      user_id: user.id,
-      topic,
-      audience,
-      video_length: length,
-      content: script,
+    return date.toLocaleString("ko-KR", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
-
-    if (error) throw error;
-
-    alert("대본이 저장되었습니다.");
-  } catch (error) {
-    console.error("Save script error:", error);
-    setError(
-      error instanceof Error
-        ? error.message
-        : "대본 저장에 실패했습니다."
-    );
-  } finally {
-    setIsSaving(false);
   }
-}
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
@@ -198,38 +317,38 @@ async function saveScript() {
           </section>
 
           <section className="min-h-[520px] rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
-            <div className="flex items-center justify-between gap-4">
-  <h2 className="text-xl font-semibold">
-    Generated script
-  </h2>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-xl font-semibold">
+                Generated script
+              </h2>
 
-  <div className="flex items-center gap-3">
-    {script && (
-      <button
-        type="button"
-        onClick={copyScript}
-        className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-violet-500 hover:text-white"
-      >
-        {copied ? "Copied!" : "Copy script"}
-      </button>
-    )}
+              <div className="flex flex-wrap items-center gap-3">
+                {script && (
+                  <button
+                    type="button"
+                    onClick={copyScript}
+                    className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-violet-500 hover:text-white"
+                  >
+                    {copied ? "Copied!" : "Copy script"}
+                  </button>
+                )}
 
-{script && (
-  <button
-    type="button"
-    onClick={saveScript}
-    disabled={isSaving}
-    className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-violet-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-  >
-    {isSaving ? "Saving..." : "Save script"}
-  </button>
-)}
+                {script && (
+                  <button
+                    type="button"
+                    onClick={saveScript}
+                    disabled={isSaving}
+                    className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-violet-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isSaving ? "Saving..." : "Save script"}
+                  </button>
+                )}
 
-    <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">
-      {audience} · {length}
-    </span>
-  </div>
-</div>
+                <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">
+                  {audience} · {length}
+                </span>
+              </div>
+            </div>
 
             <div className="mt-8 min-h-[390px] rounded-xl border border-zinc-700 bg-zinc-950/50 p-6">
               {isLoading && (
@@ -267,6 +386,104 @@ async function saveScript() {
             </div>
           </section>
         </div>
+
+        <section className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold">Saved scripts</h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                현재 계정에 저장된 대본을 확인하고 관리하세요.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            {isLoadingScripts && (
+              <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 px-4 py-10 text-center text-sm text-zinc-400">
+                대본 목록을 불러오는 중...
+              </div>
+            )}
+
+            {!isLoadingScripts && scriptsError && (
+              <div className="rounded-xl border border-red-900 bg-red-950/40 p-4 text-sm text-red-300">
+                {scriptsError}
+              </div>
+            )}
+
+            {!isLoadingScripts && !scriptsError && scripts.length === 0 && (
+              <div className="rounded-xl border border-zinc-700 bg-zinc-950/50 px-4 py-10 text-center">
+                <p className="text-sm font-medium text-zinc-300">
+                  저장된 대본이 없습니다
+                </p>
+                <p className="mt-2 text-sm text-zinc-500">
+                  대본을 생성한 뒤 Save script로 저장하면 여기에 표시됩니다.
+                </p>
+              </div>
+            )}
+
+            {!isLoadingScripts && !scriptsError && scripts.length > 0 && (
+              <ul className="space-y-3">
+                {scripts.map((item) => {
+                  const isExpanded = expandedId === item.id;
+
+                  return (
+                    <li
+                      key={item.id}
+                      className="rounded-xl border border-zinc-700 bg-zinc-950/50"
+                    >
+                      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedId(isExpanded ? null : item.id)
+                          }
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <p className="truncate text-sm font-medium text-zinc-100">
+                            {item.topic || "Untitled script"}
+                          </p>
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {item.audience} · {item.video_length} ·{" "}
+                            {formatCreatedAt(item.created_at)}
+                          </p>
+                        </button>
+
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedId(isExpanded ? null : item.id)
+                            }
+                            className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-violet-500 hover:text-white"
+                          >
+                            {isExpanded ? "접기" : "열기"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => deleteScript(item.id)}
+                            disabled={deletingId === item.id}
+                            className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-red-300 transition hover:border-red-500 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {deletingId === item.id ? "삭제 중..." : "삭제"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="border-t border-zinc-800 px-4 py-4">
+                          <div className="whitespace-pre-wrap text-sm leading-7 text-zinc-200">
+                            {item.content}
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );
