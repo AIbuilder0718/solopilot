@@ -9,6 +9,7 @@ export default function DashboardPage() {
   const [script, setScript] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   async function generateScript() {
     if (!topic.trim()) return;
@@ -47,7 +48,20 @@ export default function DashboardPage() {
       setIsLoading(false);
     }
   }
+async function copyScript() {
+  if (!script) return;
 
+  try {
+    await navigator.clipboard.writeText(script);
+    setCopied(true);
+
+    setTimeout(() => {
+      setCopied(false);
+    }, 2000);
+  } catch {
+    setError("스크립트를 복사하지 못했습니다.");
+  }
+}
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
       <div className="mx-auto max-w-6xl p-6 md:p-10">
@@ -125,15 +139,27 @@ export default function DashboardPage() {
           </section>
 
           <section className="min-h-[520px] rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">
-                Generated script
-              </h2>
+            <div className="flex items-center justify-between gap-4">
+  <h2 className="text-xl font-semibold">
+    Generated script
+  </h2>
 
-              <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">
-                {audience} · {length}
-              </span>
-            </div>
+  <div className="flex items-center gap-3">
+    {script && (
+      <button
+        type="button"
+        onClick={copyScript}
+        className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-violet-500 hover:text-white"
+      >
+        {copied ? "Copied!" : "Copy script"}
+      </button>
+    )}
+
+    <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">
+      {audience} · {length}
+    </span>
+  </div>
+</div>
 
             <div className="mt-8 min-h-[390px] rounded-xl border border-zinc-700 bg-zinc-950/50 p-6">
               {isLoading && (
