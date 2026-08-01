@@ -1,12 +1,17 @@
-import OpenAI from "openai";
+import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 export async function POST(request: Request) {
   try {
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "Gemini API key is missing." },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json();
     const { topic, audience, length } = body;
 
@@ -17,10 +22,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const response = await openai.responses.create({
-      model: "gpt-5-mini",
-      store: false,
-      input: `
+    const ai = new GoogleGenAI({ apiKey });
+
+    const prompt = `
 You are an expert YouTube scriptwriter.
 
 Create a complete YouTube script using these settings:
@@ -29,7 +33,9 @@ Topic: ${topic}
 Target audience: ${audience}
 Video length: ${length}
 
-Write the script in this structure:
+Write in Korean unless the user explicitly requests another language.
+
+Use this structure:
 
 1. Title
 2. Hook
@@ -37,18 +43,33 @@ Write the script in this structure:
 4. Main content
 5. Call to action
 
-Make it engaging, practical, and easy to speak naturally.
-      `,
+Requirements:
+- Start with a strong hook.
+- Make the script practical and engaging.
+- Use natural spoken language.
+- Avoid generic or repetitive wording.
+- Match the requested video length.
+`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: prompt,
     });
 
     return NextResponse.json({
-      script: response.output_text,
+      script: response.text ?? "",
     });
   } catch (error) {
     console.error("Script generation error:", error);
 
+    const details =
+      error instanceof Error ? error.message : "Unknown error occurred.";
+
     return NextResponse.json(
-      { error: "Failed to generate script." },
+      {
+        error: "Failed to generate script.",
+        details,
+      },
       { status: 500 }
     );
   }
